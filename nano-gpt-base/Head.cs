@@ -48,7 +48,7 @@ namespace TransformerHead
             register_module("value", _value);
 
             // Lower triangular mask to ensure causality in self-attention
-            _tril = torch.tril(torch.ones(Settings.BlockSize, Settings.BlockSize));
+            _tril = torch.tril(torch.ones(Settings.BlockSize, Settings.BlockSize)); //? it should be TxT dynamically for inference.
             register_buffer("tril", _tril);
 
             // Dropout layer for regularization.

@@ -130,8 +130,8 @@ public sealed class GptLanguageModel : torch.nn.Module
         using var noGrad = torch.no_grad();
         eval();
         // in video max new tokens was the context window but that was slowing things down a lot for me
-        const int contextWindow = 200;
-
+        // it's not max new tokens, it's block size.
+        const int contextWindow = BaseSettings.BlockSize;        
         for (int i = 0; i < maxNewTokens; i++)
         {
             long start = Math.Max(0, allGeneratedTokens.size(1) - contextWindow); // Gets the first token 
@@ -164,11 +164,24 @@ public sealed class GptLanguageModel : torch.nn.Module
 
         // Timestamp: 32:15
         Tensor context = torch.zeros(new long[] { 1, 1 }, dtype: torch.ScalarType.Int64).to(Settings.Device);
+        
+        // Create a list to store all generated tokens
+        List<short> allTokens = new List<short>();
+        string fullText = "";
+        
+        // Print tokens as they are generated
         foreach (var token in Generate(context, maxNewTokens))
         {
-            LibLog.LogInfo(tokenEncoder.Decode(token).ToString());
+            allTokens.Add(token);
+            string decoded = tokenEncoder.Decode(token).ToString();
+            fullText += decoded;
+            LibLog.LogInfo(decoded);
         }
-
-        LibLog.LogInfo("\n\n====Generation Completed====\n");
+        
+        // Print the token count and full generated text
+        LibLog.LogInfo($"\n\n====Generation Summary====");
+        LibLog.LogInfo($"Total tokens generated: {allTokens.Count}");
+        LibLog.LogInfo($"Full generated text:\n{fullText}");
+        LibLog.LogInfo("\n====Generation Completed====\n");
     }
 }
