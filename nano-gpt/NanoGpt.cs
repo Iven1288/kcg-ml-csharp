@@ -3,11 +3,8 @@ using TorchSharp;
 using TorchSharp.Modules;
 using Tensor = TorchSharp.torch.Tensor;
 using Settings = NanoGptSetting.Settings;
-using BaseSettings = NanoGptBaseSetting.Settings;
 using LogUtility;
 using Block = TransformerBlock.Block;
-// ReSharper disable All
-#pragma warning disable IDE0059
 
 namespace Gpt;
 
@@ -32,28 +29,32 @@ public sealed class GptLanguageModel : torch.nn.Module
     // List of transformer blocks (each containing multi-head attention and feed-forward network)
     private readonly List<Block> _blocksList;
 
-    public GptLanguageModel(string name, long vocabSize) : base(name)
+    public torch.Device device;
+
+    public GptLanguageModel(string name, long vocabSize, torch.Device device) : base(name)
     {
+        this.device = device;
+
         // Initialize token embeddings from the given vocabulary size and embedding dimension
-        _tokenEmbeddingTable = torch.nn.Embedding(vocabSize, BaseSettings.NEmbed);
+        _tokenEmbeddingTable = torch.nn.Embedding(vocabSize, Settings.NEmbed);
         register_module("token_embedding_table", _tokenEmbeddingTable);
 
         // Initialize position embeddings from the sequence length (block size) and embedding dimension
-        _positionEmbeddingTable = torch.nn.Embedding(BaseSettings.BlockSize, BaseSettings.NEmbed);
+        _positionEmbeddingTable = torch.nn.Embedding(Settings.BlockSize, Settings.NEmbed);
         register_module("position_embedding_table", _positionEmbeddingTable);
 
         _blocksList = new List<Block>();
-        for (int i = 0; i < BaseSettings.NLayer; i++)
+        for (int i = 0; i < Settings.NLayer; i++)
         {
             var block = new Block($"block_{i}");
             _blocksList.Add(block);
             register_module($"block_{i}", block);
         }
 
-        _lnF = torch.nn.LayerNorm(BaseSettings.NEmbed);
+        _lnF = torch.nn.LayerNorm(Settings.NEmbed);
         register_module("ln_f", _lnF);
 
-        _lmHead = torch.nn.Linear(BaseSettings.NEmbed, vocabSize);
+        _lmHead = torch.nn.Linear(Settings.NEmbed, vocabSize);
         register_module("lm_head", _lmHead);
 
         // Apply custom weight initialization method
@@ -66,20 +67,20 @@ public sealed class GptLanguageModel : torch.nn.Module
         if (module is Linear linearLayer)
         {
             // Initialize the weights of the linear layer with a normal distribution
-            var newLinearWeight = torch.normal(mean: 0.0, std: 0.02, size: linearLayer.weight!.shape).to(Settings.Device);
+            var newLinearWeight = torch.normal(mean: 0.0, std: 0.02, size: linearLayer.weight!.shape).to(this.device);
             linearLayer.weight = torch.nn.Parameter(newLinearWeight);
 
             // If the linear layer has a bias term, initialize it with zeros
             if (linearLayer.bias is { } bias)
             {
-                var newBias = torch.zeros(bias.shape).to(Settings.Device);
+                var newBias = torch.zeros(bias.shape).to(this.device);
                 linearLayer.bias = torch.nn.Parameter(newBias);
             }
         }
         else if (module is Embedding embeddingLayer)
         {
             // Initialize the weights of the embedding layer with a normal distribution
-            var newEmbeddingWeight = torch.normal(mean: 0.0, std: 0.02, size: embeddingLayer.weight!.shape).to(Settings.Device);
+            var newEmbeddingWeight = torch.normal(mean: 0.0, std: 0.02, size: embeddingLayer.weight!.shape).to(this.device);
             embeddingLayer.weight = torch.nn.Parameter(newEmbeddingWeight);
         }
     }
@@ -131,7 +132,8 @@ public sealed class GptLanguageModel : torch.nn.Module
         eval();
         // in video max new tokens was the context window but that was slowing things down a lot for me
         // it's not max new tokens, it's block size.
-        const int contextWindow = BaseSettings.BlockSize;        
+        const int contextWindow = Settings.BlockSize;
+
         for (int i = 0; i < maxNewTokens; i++)
         {
             long start = Math.Max(0, allGeneratedTokens.size(1) - contextWindow); // Gets the first token 
@@ -163,13 +165,13 @@ public sealed class GptLanguageModel : torch.nn.Module
         LibLog.LogInfo("\n====Generating:====\n");
 
         // Timestamp: 32:15
-        Tensor context = torch.zeros(new long[] { 1, 1 }, dtype: torch.ScalarType.Int64).to(Settings.Device);
+        Tensor context = torch.zeros(new long[] { 1, 1 }, dtype: torch.ScalarType.Int64).to(this.device);
         
-        // Create a list to store all generated tokens
-        List<short> allTokens = new List<short>();
-        string fullText = "";
-        
-        // Print tokens as they are generated
+         // Create a list to store all generated tokens
+         List<short> allTokens = new List<short>();
+         string fullText = "";
+         
+         // Print tokens as they are generated
         foreach (var token in Generate(context, maxNewTokens))
         {
             allTokens.Add(token);
@@ -177,7 +179,7 @@ public sealed class GptLanguageModel : torch.nn.Module
             fullText += decoded;
             LibLog.LogInfo(decoded);
         }
-        
+
         // Print the token count and full generated text
         LibLog.LogInfo($"\n\n====Generation Summary====");
         LibLog.LogInfo($"Total tokens generated: {allTokens.Count}");

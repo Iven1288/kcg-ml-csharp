@@ -5,7 +5,6 @@ using TorchSharp.Modules;
 using Tensor = TorchSharp.torch.Tensor;
 using NanoGptArgsSettings;
 using Settings = NanoGptSetting.Settings;
-using BaseSettings = NanoGptBaseSetting.Settings;
 using Gpt;
 using LogUtility;
 using FileLib;
@@ -34,14 +33,14 @@ namespace NanoGptTraining
             LibLog.LogInfo($"{numberToTest}");
 
             DataSampler dataSampler = new DataSampler(trainData, testData);
-            GptLanguageModel model = new GptLanguageModel("My_Language_Model", vocabSize).to(Settings.Device);
-            if (FileUtils.FileExists(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey)))
+            GptLanguageModel model = new GptLanguageModel("My_Language_Model", vocabSize, argsSettings.Device).to(argsSettings.Device);
+            if (FileUtils.FileExists(argsSettings.SaveLocation(vocabSize)))
             {
-                model.load(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey));
+                model.load(argsSettings.SaveLocation(vocabSize));
             }
 
             // Timestamp: 35:15
-            AdamW optimizer = torch.optim.AdamW(model.parameters(), lr: BaseSettings.LearningRate);
+            AdamW optimizer = torch.optim.AdamW(model.parameters(), lr: Settings.LearningRate);
 
             var parameterCount = model.parameters().Sum(p => p.numel());
             LibLog.LogInfo($"Parameters Count: {parameterCount}");
@@ -51,26 +50,26 @@ namespace NanoGptTraining
 
             float[] lowestEval = new [] { float.MaxValue, float.MaxValue };
             int patienceCounter = 0;
-            for (int i = 0; i < BaseSettings.MaxIterations; i++)
+            for (int i = 0; i < Settings.MaxIterations; i++)
             {
                 // Check if it's time to evaluate the model based on the evaluation interval setting.
                 // This is done periodically and not at every single training step to save compute time.
-                if (i != 0 && i % BaseSettings.EvalInterval == 0)
+                if (i != 0 && i % Settings.EvalInterval == 0)
                 {
                     // Calculate the loss on the training and test data sets
-                    float[] losses = EstimateLoss(model, dataSampler);
+                    float[] losses = EstimateLoss(model, dataSampler, argsSettings);
                     LibLog.LogInfo($"step {i}: train loss {losses[0]:F4}, val loss {losses[1]:F4}");
 
                     // If the current losses are the lowest observed, update the best model checkpoint.
                     if (losses[0] < lowestEval[0] && losses[1] < lowestEval[1])
                     {
                         lowestEval = losses;
-                        var directory = PathUtils.GetDirectoryName(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey));
+                        var directory = PathUtils.GetDirectoryName(argsSettings.SaveLocation(vocabSize));
                         if (!FileUtils.DirectoryExists(directory))
                         {
                             FileUtils.CreateDirectory(directory!);
                         }
-                        model.save(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey));
+                        model.save(argsSettings.SaveLocation(vocabSize));
                         patienceCounter = 0;
                     }
                     // Allow the model some leeway so it can explore different
@@ -83,14 +82,14 @@ namespace NanoGptTraining
                     // If the model still hasn't improved, revert to the previous best model.
                     else
                     {
-                        if (FileUtils.FileExists(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey)))
+                        if (FileUtils.FileExists(argsSettings.SaveLocation(vocabSize)))
                         {
-                            model.load(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey));
+                            model.load(argsSettings.SaveLocation(vocabSize));
                             patienceCounter = 0;
                         }
                     }
 
-                    if (BaseSettings.GenerateOnEvaluate)
+                    if (Settings.GenerateOnEvaluate)
                     {
                         model.GenerateAndPrint(tokenEncoder, maxNewTokens: 200);
                     }
@@ -102,7 +101,7 @@ namespace NanoGptTraining
                 // are just the input tensors offset by 1 index
                 // to the right, they represent what
                 // is supposed to come next.
-                (Tensor inputs, Tensor targets) = dataSampler.RandomSamples(DataType.Train, BaseSettings.BatchSize, BaseSettings.BlockSize, Settings.Device);
+                (Tensor inputs, Tensor targets) = dataSampler.RandomSamples(DataType.Train, Settings.BatchSize, Settings.BlockSize, argsSettings.Device);
 
                 // Pass the 'inputs' through the GPT model to obtain predictions ('logits') and calculate the loss with respect to 'targets'.
                 // The 'logits' tensor contains raw prediction values for each token in the vocabulary, while 'loss' represents the model's error.
@@ -128,7 +127,7 @@ namespace NanoGptTraining
 
             // Timestamp: 32:15
             model.GenerateAndPrint(tokenEncoder, maxNewTokens: 500);
-            model.save(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey));
+            model.save(argsSettings.SaveLocation(vocabSize));
         }
 
 
@@ -138,7 +137,7 @@ namespace NanoGptTraining
         /// Gradient computation is temporarily disabled to optimize memory usage and computation time during this evaluation phase.
         /// </summary>
         // Timestamp: 40:00
-        private static float[] EstimateLoss(GptLanguageModel model, DataSampler dataSampler)
+        private static float[] EstimateLoss(GptLanguageModel model, DataSampler dataSampler, ArgsSettings argsSettings)
         {
             using var noGrad = torch.no_grad();
             var dataTypes = Enum.GetValues<DataType>();
@@ -146,10 +145,10 @@ namespace NanoGptTraining
             model.eval();
             foreach (var dataType in dataTypes)
             {
-                var losses = torch.zeros(BaseSettings.EvalIterations);
-                for (int k = 0; k < BaseSettings.EvalIterations - 1; k++)
+                var losses = torch.zeros(Settings.EvalIterations);
+                for (int k = 0; k < Settings.EvalIterations - 1; k++)
                 {
-                    (Tensor inputs, Tensor targets) = dataSampler.RandomSamples(dataType, BaseSettings.BatchSize, BaseSettings.BlockSize, Settings.Device);
+                    (Tensor inputs, Tensor targets) = dataSampler.RandomSamples(dataType, Settings.BatchSize, Settings.BlockSize, argsSettings.Device);
                     (Tensor logits, Tensor? loss) = model.Forward(inputs, targets);
                     losses[k] = loss!.item<float>();
                 }

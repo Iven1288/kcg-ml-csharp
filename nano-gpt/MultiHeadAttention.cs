@@ -2,7 +2,7 @@ using Shared;
 using TorchSharp;
 using TorchSharp.Modules;
 using Tensor = TorchSharp.torch.Tensor;
-using Settings = NanoGptBaseSetting.Settings;
+using Settings = NanoGptSetting.Settings;
 using LogUtility;
 using Head = TransformerHead.Head;
 

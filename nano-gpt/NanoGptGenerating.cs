@@ -11,10 +11,10 @@ namespace NanoGptGenerating
     {
         public static void Generate(TokenEncoder tokenEncoder, int vocabSize, ArgsSettings argsSettings)
         {
-            GptLanguageModel model = new GptLanguageModel("My_Language_Model", vocabSize).to(Settings.Device);
-            if (FileUtils.FileExists(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey)))
+            GptLanguageModel model = new GptLanguageModel("My_Language_Model", vocabSize, argsSettings.Device).to(argsSettings.Device);
+            if (FileUtils.FileExists(argsSettings.SaveLocation(vocabSize)))
             {
-                model.load(argsSettings.SaveLocation(vocabSize, Settings.SettingsKey));
+                model.load(argsSettings.SaveLocation(vocabSize));
             }
             model.GenerateAndPrint(tokenEncoder, int.MaxValue);
         }

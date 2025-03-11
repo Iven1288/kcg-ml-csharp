@@ -1,7 +1,7 @@
 using Shared;
 using TorchSharp;
 
-namespace NanoGptBaseSetting
+namespace NanoGptSetting
 {
     // Exact settings from video in comments, will likely cause your GPU to run out of 
     // memory if you try with CUDA
